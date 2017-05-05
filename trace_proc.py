@@ -36,17 +36,18 @@ def main(argv):
             print "{}:\t{}".format(name, cmd)
         return
 
-    command = _benchmarks.get(argv[1], None)
+    bench_name = argv[1]
+    command = _benchmarks.get(bench_name, None)
     if command is None:
         print "Invalid benchmark name: {}".format(argv[1])
         return
 
     print "Running command: {}".format(command)
     run_perf(command)
-    parse_trace(command, PERF_TRACE)
+    parse_trace(bench_name, command, PERF_TRACE)
 
 
-def parse_trace(command, filename):
+def parse_trace(bench_name, command, filename):
     """Parse the perf.trace file into csv format.
 
     Args
@@ -84,7 +85,7 @@ def parse_trace(command, filename):
 
     start_time = events[0].start_time
 
-    with open('./traces/{}.trace.csv'.format(command_name), 'w') as outfile:
+    with open('./traces/{}.trace.csv'.format(bench_name), 'w') as outfile:
         for e in events:
             e.normalize_times(start_time)
             line_out = ','.join([str(e.start_time), e.event_type, str(e.duration)])
