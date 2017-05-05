@@ -3,6 +3,8 @@ import os
 import sys
 import subprocess
 
+import benchmarks
+
 PERF_DATA = "/tmp/perf.data"
 
 PERF_RECORD = "sudo perf record \
@@ -26,11 +28,22 @@ BLOCK_EVENT = "sched_stat_blocked"
 
 
 def main(argv):
-    if len(argv) < 2:
-        print "Usage: ./trace_proc.py"
+    _benchmarks = benchmarks.get_benchmarks()
 
-    run_perf(' '.join(argv[1:]))
-    parse_trace(os.path.split(argv[1])[1], PERF_TRACE)
+    if len(argv) != 2:
+        print "Usage: ./trace_proc.py <BENCHMARK_NAME>"
+        for name, cmd in _benchmarks.iteritems():
+            print "{}:\t{}".format(name, cmd)
+        return
+
+    command = _benchmarks.get(argv[1], None)
+    if command is None:
+        print "Invalid benchmark name: {}".format(argv[1])
+        return
+
+    print "Running command: {}".format(command)
+    run_perf(command)
+    parse_trace(command, PERF_TRACE)
 
 
 def parse_trace(command, filename):
@@ -41,6 +54,7 @@ def parse_trace(command, filename):
         filename: absolute path to the perf.trace file.
     """
     events = []
+    command_name = command.split()[0]
     with open(filename, 'r') as trace_file:
         for line in trace_file.readlines():
             # This is a single line of the trace
@@ -55,7 +69,7 @@ def parse_trace(command, filename):
 
             # If this line of the trace is not the command we're interested
             # in, skip it.
-            if comm != command:
+            if comm != command_name:
                 continue
 
             stime = (trace[2].split("=")[1]
@@ -66,9 +80,11 @@ def parse_trace(command, filename):
         print "No events captured"
         return
 
+    events.sort(key=lambda e: e.start_time)
+
     start_time = events[0].start_time
 
-    with open('{}.trace.csv'.format(command), 'w') as outfile:
+    with open('./traces/{}.trace.csv'.format(command_name), 'w') as outfile:
         for e in events:
             e.normalize_times(start_time)
             line_out = ','.join([str(e.start_time), e.event_type, str(e.duration)])
