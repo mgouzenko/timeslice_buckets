@@ -55,7 +55,7 @@ def parse_trace(bench_name, command, filename):
         filename: absolute path to the perf.trace file.
     """
     events = []
-    command_name = command.split()[0]
+    command_name = os.path.split(command.split()[0])[1]
     with open(filename, 'r') as trace_file:
         for line in trace_file.readlines():
             # This is a single line of the trace
