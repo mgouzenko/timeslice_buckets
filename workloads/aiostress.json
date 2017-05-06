@@ -1,0 +1,8 @@
+{
+    "processes": [
+        {
+            "benchmark": "aiostress",
+            "quantity": 2
+        }
+    ]
+}

@@ -8,23 +8,16 @@ import benchmarks
 PERF_DATA = "/tmp/perf.data"
 
 PERF_RECORD = "sudo perf record \
--e sched:sched_stat_sleep \
--e sched:sched_stat_blocked \
+-e sched:sched_switch \
+-e sched:sched_wakeup \
 -e sched:sched_process_exit \
 -a -o {outfile} -- {cmd}"
 
 PERF_SCRIPT = "sudo perf script -i {infile} -F time,event,trace > {outfile}"
 PERF_TRACE = "/tmp/perf.trace"
 
-# These are the two possible events that occur when a process sleeps. You can
-# look at update_stats_dequeue in fair.c to see this. It looks like the
-# sched_stat_wait event occurs when the process is contending for the CPU after
-# having been context switched off. But we only care about sleeping patterns.
-#
-# Note: sched_stat_sleep means the process is interruptible. sched_stat_blocked
-# means the process is in an uninterruptible state (probably waiting for IO).
-SLEEP_EVENT = "sched_stat_sleep"
-BLOCK_EVENT = "sched_stat_blocked"
+WAKE_EVENT = "sched_wakeup"
+SWITCH_EVENT = "sched_switch"
 
 
 def main(argv):
@@ -43,7 +36,8 @@ def main(argv):
         return
 
     print "Running command: {}".format(command)
-    run_perf(command)
+    perf_record(command)
+    perf_script()
     parse_trace(bench_name, command, PERF_TRACE)
 
 
@@ -54,45 +48,58 @@ def parse_trace(bench_name, command, filename):
         command: the command whose events we're interested in tracing.
         filename: absolute path to the perf.trace file.
     """
-    events = []
+    # dict of pid -> event list. This is here because sometimes processes fork
+    # off children.
+    events = {}
     command_name = os.path.split(command.split()[0])[1]
     with open(filename, 'r') as trace_file:
         for line in trace_file.readlines():
             # This is a single line of the trace
-            split = [i.strip() for i in line.split(':')]
-            ts, _, event = split[:3]
+            split = [i.strip() for i in line.split(' ') if i.strip()]
 
-            # Resplit the trace on spaces
-            trace = '_'.join(split[3:]).split()
+            raw_ts, raw_event = split[:2]
+            event = raw_event.split(":")[1].strip()
+            ts = raw_ts.split(":")[0].strip()
+            trace = " ".join(split[2:])
+            state = trace.split("=")[0].split()[-1]
 
-            # The command is reported in the trace as "comm=<COMMAND>"
-            comm = trace[0].split("=")[1]
+            if event == SWITCH_EVENT or event == WAKE_EVENT:
+                # The following is embarassingly hacky, but oh well!
+                process_and_pid = trace.split("[")[0].strip()
+                process_and_pid_split = process_and_pid.split(":")
+                pid = process_and_pid_split[-1]
+                comm = ':'.join(process_and_pid_split[0:-1])
 
-            # If this line of the trace is not the command we're interested
-            # in, skip it.
-            if comm != command_name:
-                continue
+                # If this line of the trace is not the command we're interested
+                # in, skip it.
+                if comm != command_name:
+                    continue
 
-            stime = (trace[2].split("=")[1]
-                     if event == SLEEP_EVENT or event == BLOCK_EVENT else "0")
-            events.append(Event(event, ts, stime))
+                events.setdefault(pid, []).append(Event(event, ts, state, trace))
 
     if not events:
         print "No events captured"
         return
 
-    events.sort(key=lambda e: e.start_time)
+    event_list = []
 
-    start_time = events[0].start_time
+    # Get the longest list of events (this is probably the PID we care about)
+    for pid, elist in events.iteritems():
+        if len(elist) > len(event_list):
+            event_list = elist
+
+    event_list.sort(key=lambda e: e.time)
+
+    start_time = event_list[0].time
 
     with open('./traces/{}.trace.csv'.format(bench_name), 'w') as outfile:
-        for e in events:
-            e.normalize_times(start_time)
-            line_out = ','.join([str(e.start_time), e.event_type, str(e.duration)])
+        for e in event_list:
+            e.normalize_time(start_time)
+            line_out = ','.join([e.event_type, e.state, str(e.time), e.trace])
             outfile.write(line_out + "\n")
 
 
-def run_perf(cmd):
+def perf_record(cmd):
     # Trace the command with perf.
     subprocess.call(
         PERF_RECORD.format(
@@ -100,6 +107,7 @@ def run_perf(cmd):
             cmd=cmd),
         shell=True)
 
+def perf_script():
     # Perf will dump traces to the perf.data file. We must convert the entries
     # into a format that we can parse.
     subprocess.call(
@@ -109,19 +117,18 @@ def run_perf(cmd):
 
 class Event(object):
 
-    def __init__(self, event_type, end_time, duration):
+    def __init__(self, event_type, time, state, trace):
         self.event_type = event_type
 
-        # Convert the end timestamp to nanos
-        self.end_time = int(float(end_time) * (10 ** 9))
+        # Convert the end timestamp (which is now in seconds) to nanos
+        self.time = int(float(time) * (10 ** 9))
 
-        self.duration = int(duration)
-        self.start_time = self.end_time - self.duration
+        self.state = state
+        self.trace = trace
 
-    def normalize_times(self, time):
+    def normalize_time(self, time):
         """Make times relative to 0."""
-        self.start_time -= time
-        self.end_time -= time
+        self.time -= time
 
 
 if __name__ == '__main__':
