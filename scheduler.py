@@ -15,6 +15,30 @@ class Scheduler(object):
     def __init__(self, procs):
         self.processes = procs
 
+        # Procs waiting to take a turn on the CPU
+        self.waiting_procs = procs
+
+        # Sleeping procs (waiting for IO and such)
+        self.sleeping_procs = []
+
+        # Proc running right now
+        self.curr_proc = procs[0]
+
+        self.waiting_procs.remove(self.curr_proc)
+
+        self.time = 0
+
+    def run(self, time):
+        # Keep going while any process needs to run.
+        while any([not p.finished for p in self.processes]) and time:
+            pass
+
+    def min_vruntime_process(self):
+        return min(self.processes, key=lambda p: p.vruntime)
+
+    def report_results(self):
+        pass
+
 class State(object):
     def __init__(self, state, duration):
         self.state = state
@@ -69,8 +93,52 @@ class State(object):
 class Process(object):
     def __init__(self, trace_name):
         self.state_list = State.make_state_list_from_trace(trace_name)
-        self.print_state_list()
-        print
+        self.vruntime = 0
+        self.context_switches = 0
+        self.finished = False
+        self.state_itr = iter(self.state_list)
+
+        # The first state
+        self.curr_state = self.state_itr.next()
+
+    def get_time_to_next_run(self):
+        if self.finished:
+            return sys.maxint
+        elif self.curr_state.state == RUNNING:
+            return 0
+        else:
+            return self.curr_state.duration
+
+    def go_to_next_state(self):
+        try:
+            self.curr_state = self.state_itr.next()
+        except StopIteration:
+            self.finished = True
+
+    def run(self, t):
+        """Let the process run for time=t.
+        
+        Return the length of time the process ran. If the process wants to run
+        for less than t, the return value is less than t.
+        """
+        if self.curr_state.state != RUNNING:
+            return 0
+
+        time_run = max(self.curr_state.duration, t)
+        self.curr_state.duration -= time_run
+
+        if self.curr_state.duration == 0:
+            self.go_to_next_state()
+                    
+        return time_run
+
+    def wait(self, time):
+        if self.curr_state != SLEEPING:
+            return
+
+        self.curr_state.duration -= max(time, self.curr_state.duration)
+        if self.curr_state.duration == 0:
+            self.go_to_next_state()
 
     def print_state_list(self):
         duration = 0
@@ -111,6 +179,10 @@ def main(argv):
     for proc in json_load['processes']:
         for _ in range(proc['quantity']):
             procs.append(Process(proc['benchmark']))
+
+    scheduler = Scheduler(procs)
+    scheduler.run(5 * (10 ** 9))
+    scheduler.report_results()
 
 
 if __name__ == '__main__':

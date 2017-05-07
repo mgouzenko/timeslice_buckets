@@ -19,6 +19,7 @@ PERF_TRACE = "/tmp/perf.trace"
 
 WAKE_EVENT = "sched_wakeup"
 SWITCH_EVENT = "sched_switch"
+TRACE_DIR = "./traces"
 
 
 def main(argv):
@@ -39,6 +40,10 @@ def main(argv):
     print "Running command: {}".format(command)
     perf_record(command)
     perf_script()
+
+    if not os.path.isdir(TRACE_DIR):
+        os.mkdir(TRACE_DIR)
+
     parse_trace(bench_name, command, PERF_TRACE)
 
 
