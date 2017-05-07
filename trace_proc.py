@@ -1,5 +1,6 @@
 #!/usr/bin/python2
 import os
+import re
 import sys
 import subprocess
 
@@ -63,19 +64,23 @@ def parse_trace(bench_name, command, filename):
             trace = " ".join(split[2:])
             state = trace.split("=")[0].split()[-1]
 
-            if event == SWITCH_EVENT or event == WAKE_EVENT:
-                # The following is embarassingly hacky, but oh well!
-                process_and_pid = trace.split("[")[0].strip()
-                process_and_pid_split = process_and_pid.split(":")
-                pid = process_and_pid_split[-1]
-                comm = ':'.join(process_and_pid_split[0:-1])
+            cmd = None
+            if event == SWITCH_EVENT:
+                cmd = re.search("prev_comm=(\S*)", trace).group(1)
+                pid = re.search("prev_pid=(\d*)", trace).group(1)
+                state = re.search("prev_state=(\S*)", trace).group(1)
 
-                # If this line of the trace is not the command we're interested
-                # in, skip it.
-                if comm != command_name:
-                    continue
+            elif event == WAKE_EVENT:
+                cmd = re.search("comm=(\S*)", trace).group(1)
+                pid = re.search("pid=(\d*)", trace).group(1)
+                state = ""
 
-                events.setdefault(pid, []).append(Event(event, ts, state, trace))
+            # If this line of the trace is not the command we're interested
+            # in, skip it.
+            if cmd != command_name:
+                continue
+
+            events.setdefault(pid, []).append(Event(event, ts, state, trace))
 
     if not events:
         print "No events captured"
@@ -95,7 +100,7 @@ def parse_trace(bench_name, command, filename):
     with open('./traces/{}.trace.csv'.format(bench_name), 'w') as outfile:
         for e in event_list:
             e.normalize_time(start_time)
-            line_out = ','.join([e.event_type, e.state, str(e.time), e.trace])
+            line_out = ','.join([e.event_type, e.state, str(e.time)])
             outfile.write(line_out + "\n")
 
 
