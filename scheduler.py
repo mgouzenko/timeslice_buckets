@@ -1,19 +1,7 @@
-#!/usr/bin/python2
-import json
-import os
-import sys
-
-WORKLOAD_DIR = "workloads"
-WORKLOAD_FILE_FMT = "./workloads/{}.json"
-TRACE_FILE_FMT = "./traces/{}.trace.csv"
-
-RUNNING = 0
-SLEEPING = 1
-SCHED_WAKEUP = "sched_wakeup"
-TARGET_LATENCY = 11 * (10 ** 9)
-
 class Scheduler(object):
-    def __init__(self, procs):
+    def __init__(self, procs, target_latency):
+        self.target_latency = target_latency
+
         self.processes = procs
 
         # Procs waiting to take a turn on the CPU
@@ -36,7 +24,7 @@ class Scheduler(object):
         # priorities as CFS does - every process runs with the same priority.
         if self.curr_proc is None:
             raise Exception("Must have a process to run.")
-        return TARGET_LATENCY / (len(self.waiting_procs) + 1)
+        return self.target_latency / (len(self.waiting_procs) + 1)
 
     def update_sleeping_procs(self, sleep_time):
         for p in self.sleeping_procs:
@@ -60,7 +48,7 @@ class Scheduler(object):
         if self.waiting_procs or self.curr_proc is not None:
             if self.waiting_procs:
                 min_vruntime = (self.min_vruntime_process().vruntime -
-                                TARGET_LATENCY)
+                                self.target_latency)
             else:
                 min_vruntime = self.curr_proc.vruntime
 
@@ -132,13 +120,13 @@ class Scheduler(object):
                 # If processes are waiting, context switch this one off the CPU
                 next_candidate = self.min_vruntime_process()
                 if (next_candidate is not None and
-                    next_candidate.vruntime < self.curr_proc.vruntime):
-                        # Put next_candidate as the current process and put the
-                        # current process back on the runqueue.
-                        self.curr_proc.context_switches += 1
-                        self.waiting_procs.append(self.curr_proc)
-                        self.curr_proc = next_candidate
-                        self.waiting_procs.remove(next_candidate)
+                        next_candidate.vruntime < self.curr_proc.vruntime):
+                    # Put next_candidate as the current process and put the
+                    # current process back on the runqueue.
+                    self.curr_proc.context_switches += 1
+                    self.waiting_procs.append(self.curr_proc)
+                    self.curr_proc = next_candidate
+                    self.waiting_procs.remove(next_candidate)
 
             # 2) curr_proc wants to sleep, so we put it on list of sleepers
             else:
@@ -158,172 +146,3 @@ class Scheduler(object):
         for p in self.processes:
             print "{}: {} switches, finished: {}".format(
                 p.name, p.context_switches, p.finished)
-
-
-class State(object):
-    def __init__(self, state, duration):
-        if state not in [SLEEPING, RUNNING]:
-            raise Exception("Bad state")
-        self.state = state
-        self.duration = int(duration)
-
-    @staticmethod
-    def make_state_list_from_trace(trace_name):
-        """Parse .trace.csv file (a list of events) as a list of states."""
-        states = []
-
-        # The process starts running
-        curr_state = RUNNING
-        curr_time = 0
-
-        with open(TRACE_FILE_FMT.format(trace_name), "r") as trace_file:
-            lineno = 1
-            for line in trace_file.readlines():
-                event, state, ts = line.split(",")
-
-                # If the current state is running, look for the next sleep
-                if curr_state == RUNNING:
-                    if event == SCHED_WAKEUP:
-                        raise Exception("[line {}] not expecting "
-                                        "a wakeup".format(str(lineno)))
-
-                    # We don't care about the context switches that leave this
-                    # process still running.
-                    if state[0] == "R":
-                        continue
-                    # D, S, D|S, x, etc
-                    else:
-                        states.append(State(RUNNING, int(ts) - curr_time))
-                        curr_time = int(ts)
-                        curr_state = SLEEPING
-
-                # If the current state is sleeping, we look for the next wakeup.
-                # In fact, the next wakeup should be the very next event. If
-                # not, it's a bug.
-                else:
-                    if event != SCHED_WAKEUP:
-                        raise Exception("[line {}] expected wakeup as next "
-                                        "event in trace: {}".format(str(lineno),
-                                                                    trace_name))
-                    states.append(State(SLEEPING, int(ts) - curr_time))
-                    curr_state = RUNNING
-                    curr_time = int(ts)
-
-                lineno += 1
-        return states
-
-
-class Process(object):
-    def __init__(self, trace_name, name):
-        self.name = name
-        self.state_list = State.make_state_list_from_trace(trace_name)
-        self.vruntime = 0
-        self.context_switches = 0
-        self.finished = False
-        self.state_itr = iter(self.state_list)
-        self.last_duration = 0
-
-        # The first state
-        self.curr_state = self.state_itr.next()
-
-    def is_running(self):
-        return (not self.finished) and self.curr_state.state == RUNNING
-
-    def is_sleeping(self):
-        return (not self.finished) and self.curr_state.state == SLEEPING
-
-    def get_time_to_next_run(self):
-        if self.finished:
-            return sys.maxint
-        elif self.curr_state.state == RUNNING:
-            return 0
-        else:
-            return self.curr_state.duration
-
-    def go_to_next_state(self):
-        try:
-            self.curr_state = self.state_itr.next()
-            self.last_duration = self.curr_state.duration
-
-        except StopIteration:
-            self.finished = True
-
-    def run(self, t):
-        """Let the process run for time=t.
-
-        Return the length of time the process ran. If the process wants to run
-        for less than t, the return value is less than t.
-        """
-        if self.curr_state.state != RUNNING:
-            return 0
-
-        time_run = min(self.curr_state.duration, t)
-        self.curr_state.duration -= time_run
-
-        if self.curr_state.duration == 0:
-            self.go_to_next_state()
-
-        # Debit time run.
-        self.vruntime += time_run
-
-        return time_run
-
-    def sleep(self, time):
-        if self.curr_state.state != SLEEPING:
-            return
-
-        self.curr_state.duration -= max(time, self.curr_state.duration)
-
-        if self.curr_state.duration == 0:
-            self.go_to_next_state()
-
-    def print_state_list(self):
-        duration = 0
-        for state in self.state_list:
-            print "{} for {} nanos".format(
-                "RUNNING" if state.state == RUNNING else "SLEEPING",
-                str(state.duration))
-            duration += state.duration
-
-        print "Duration: {} seconds".format(str(float(duration / 10 ** 9)))
-
-def get_workload(workload):
-    with open(WORKLOAD_FILE_FMT.format(workload), "r") as workload:
-        return json.loads(workload.read())
-
-def get_workloads():
-    return [f.split(".")[0] for f in os.listdir(WORKLOAD_DIR)]
-
-def list_workloads():
-    for f in get_workloads():
-        print "\t{}".format(f)
-
-def main(argv):
-    if len(argv) != 2:
-        print "Usage: ./scheduler.py <WORKLOAD>"
-        print
-        print "Workloads"
-        list_workloads()
-        return
-
-    workload = argv[1]
-    if workload not in get_workloads():
-        print "Unrecognized workload: {}".format(workload)
-        return
-
-    procs = []
-    json_load = get_workload(workload)
-    for proc in json_load['processes']:
-        for i in range(proc['quantity']):
-            trace = proc['benchmark']
-            procs.append(Process(trace, "{}_{}".format(trace, i)))
-
-    procs[0].print_state_list()
-
-    scheduler = Scheduler(procs)
-    scheduler.run(5000 * TARGET_LATENCY)
-    scheduler.report_results()
-
-
-if __name__ == '__main__':
-    main(sys.argv)
