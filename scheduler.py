@@ -13,9 +13,7 @@ class Scheduler(object):
         self.sleeping_procs = []
 
         # Proc running right now
-        self.curr_proc = procs[0]
-
-        self.waiting_procs.remove(self.curr_proc)
+        self.curr_proc = None
 
         self.residual_time = 0
 
@@ -79,21 +77,22 @@ class Scheduler(object):
             # If no procs want to run, fast forward time; we need to have a
             # runnable process before we continue with this loop.
             if self.curr_proc is None:
-                # Find the min time we need to wait for a process to wake up.
-                min_sleep_proc = min(self.sleeping_procs,
-                                     key=lambda p: p.curr_state.duration)
-
-                # Cap it at the time remaining in the simulation.
-                min_sleep_time = min(min_sleep_proc.curr_state.duration,
-                                     time_left)
-
-                # Give the sleeping processes some time to sleep. After this
-                # there should be at least one runnable process.
-                self.update_sleeping_procs(min_sleep_time)
-                sim_time += min_sleep_time
-
                 if not self.waiting_procs:
-                    raise Exception("There should be waiting procs by now.")
+                    # Find the min time we need to wait for a process to wake up.
+                    min_sleep_proc = min(self.sleeping_procs,
+                                         key=lambda p: p.curr_state.duration)
+
+                    # Cap it at the time remaining in the simulation.
+                    min_sleep_time = min(min_sleep_proc.curr_state.duration,
+                                         time_left)
+
+                    # Give the sleeping processes some time to sleep. After this
+                    # there should be at least one runnable process.
+                    self.update_sleeping_procs(min_sleep_time)
+                    sim_time += min_sleep_time
+
+                    if not self.waiting_procs:
+                        raise Exception("There should be waiting procs by now.")
 
                 self.curr_proc = self.min_vruntime_process()
                 self.waiting_procs.remove(self.curr_proc)
@@ -146,5 +145,5 @@ class Scheduler(object):
 
     def report_results(self):
         for p in self.processes:
-            print "{}: {} switches, finished: {}".format(
-                p.name, p.context_switches, p.finished)
+            print "{}: {} switches, average runtime: {}, finished: {}".format(
+                p.name, p.context_switches, p.average_runtime, p.finished)

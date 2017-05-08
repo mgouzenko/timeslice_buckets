@@ -1,5 +1,7 @@
 from state import State, RUNNING, SLEEPING
 
+ALPHA = 0.3
+
 class Process(object):
     def __init__(self, trace_file_name, name):
         self.name = name
@@ -19,6 +21,11 @@ class Process(object):
         self.context_switches = 0
         self.finished = False
         self.last_duration = 0
+
+        # How long the process has been running since it last woke.
+        self.curr_runtime = 0
+        self.old_average_runtime = 0
+        self.average_runtime = 0
 
         # The first state
         self.curr_state = self.state_itr.next()
@@ -42,6 +49,12 @@ class Process(object):
             self.curr_state = self.state_itr.next()
             self.last_duration = self.curr_state.duration
 
+            # If we go from running --> sleeping, update the average runtime.
+            if self.curr_state.state == SLEEPING:
+                self.average_runtime = ((ALPHA * self.old_average_runtime) +
+                                        (1. - ALPHA) * self.curr_runtime)
+                self.old_average_runtime = self.average_runtime
+                self.curr_runtime = 0
         except StopIteration:
             self.finished = True
 
@@ -56,6 +69,28 @@ class Process(object):
 
         time_run = min(self.curr_state.duration, t)
         self.curr_state.duration -= time_run
+        self.curr_runtime += time_run
+
+        # Note: runtime is how long the process has run since it woke up.
+        #
+        # This provision is in place for processes that never sleep. We
+        # calculate the average runtime as a function of the previous average
+        # runtime and the last runtime.
+        #
+        # Thus, when the process goes to sleep, we have a concrete
+        # "last runtime" and can update the average runtime accordingly.
+        #
+        # This problematic because the frequency with which the average runtime
+        # is updated depends on how long the process runs for before it goes to
+        # sleep. If the process never goes to sleep, the average runtime will
+        # never get updated!
+        #
+        # To fix this, we update the average runtime whenever the process gets
+        # off the cpu. If it has been on the CPU for longer than average, we
+        # use the current runtime to estimate the "last runtime".
+        if self.curr_runtime > self.average_runtime:
+            self.average_runtime = ((ALPHA * self.old_average_runtime) +
+                                    (1. - ALPHA) * self.curr_runtime)
 
         if self.curr_state.duration == 0:
             self.go_to_next_state()
