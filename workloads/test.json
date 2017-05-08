@@ -4,5 +4,6 @@
             "benchmark": "test",
             "quantity": 2
         }
-    ]
+    ],
+    "cpus": 4
 }

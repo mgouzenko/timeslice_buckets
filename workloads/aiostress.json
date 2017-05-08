@@ -4,5 +4,6 @@
             "benchmark": "aiostress",
             "quantity": 2
         }
-    ]
+    ],
+    "cpus": 4
 }

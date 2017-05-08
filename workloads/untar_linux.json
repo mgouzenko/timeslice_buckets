@@ -4,5 +4,6 @@
             "benchmark": "untar_linux",
             "quantity": 2
         }
-    ]
+    ],
+    "cpus": 4
 }

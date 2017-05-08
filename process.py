@@ -3,11 +3,21 @@ from state import State, RUNNING, SLEEPING
 class Process(object):
     def __init__(self, trace_file_name, name):
         self.name = name
+
+        # Current CPU the process is running on
+        self.curr_cpu = None
+
+        # CPU the process should migrate to
+        self.destination_cpu = None
+        self.needs_migration = False
+
+        # A parsing of the process's trace into a list of states.
         self.state_list = State.make_state_list_from_trace(trace_file_name)
+        self.state_itr = iter(self.state_list)
+
         self.vruntime = 0
         self.context_switches = 0
         self.finished = False
-        self.state_itr = iter(self.state_list)
         self.last_duration = 0
 
         # The first state

@@ -2,7 +2,8 @@
     "processes": [
         {
             "benchmark": "zip",
-            "quantity": 6
+            "quantity": 24
         }
-    ]
+    ],
+    "cpus": 4
 }

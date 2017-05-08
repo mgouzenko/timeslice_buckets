@@ -3,8 +3,9 @@ import json
 import os
 import sys
 
+from cpu import CPU
+from migrator import Migrator
 from process import Process
-from scheduler import Scheduler
 
 WORKLOAD_DIR = "workloads"
 WORKLOAD_FILE_FMT = "./workloads/{}.json"
@@ -51,10 +52,13 @@ def main(argv):
             procs.append(Process(trace, "{}_{}".format(trace, i)))
 
     procs[0].print_state_list()
+    num_cpus = json_load['cpus']
 
-    scheduler = Scheduler(procs, TARGET_LATENCY)
-    scheduler.run(5000 * TARGET_LATENCY)
-    scheduler.report_results()
+    migrator = Migrator()
+    cpus = [CPU(procs[i::num_cpus], TARGET_LATENCY, i, migrator)
+            for i in range(num_cpus)]
+    for c in cpus:
+        c.run()
 
 
 if __name__ == '__main__':

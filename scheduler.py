@@ -1,5 +1,7 @@
 class Scheduler(object):
-    def __init__(self, procs, target_latency):
+    def __init__(self, procs, target_latency, migrator):
+        self.migrator = migrator
+
         self.target_latency = target_latency
 
         self.processes = procs
