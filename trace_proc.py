@@ -6,7 +6,7 @@ import subprocess
 
 import benchmarks
 
-PERF_DATA = "/tmp/perf.data"
+PERF_DATA = "/tmp/{}/perf.data".format(os.getuid())
 
 PERF_RECORD = "sudo perf record \
 -e sched:sched_switch \
@@ -15,7 +15,7 @@ PERF_RECORD = "sudo perf record \
 -a -o {outfile} -- {cmd}"
 
 PERF_SCRIPT = "sudo perf script -i {infile} -F time,event,trace > {outfile}"
-PERF_TRACE = "/tmp/perf.trace"
+PERF_TRACE = "/tmp/{}/perf.trace".format(os.getuid())
 
 WAKE_EVENT = "sched_wakeup"
 SWITCH_EVENT = "sched_switch"
@@ -23,7 +23,7 @@ TRACE_DIR = "./traces"
 
 
 def main(argv):
-    _benchmarks = benchmarks.get_benchmarks()
+    _benchmarks = benchmarks.BENCHMARKS
 
     if len(argv) != 2:
         print "Usage: ./trace_proc.py <BENCHMARK_NAME>"
@@ -31,20 +31,26 @@ def main(argv):
             print "{}:\t{}".format(name, cmd)
         return
 
+    if not os.path.isdir("/tmp/{}".format(os.getuid())):
+        os.mkdir("/tmp/{}".format(os.getuid()))
+
     bench_name = argv[1]
-    command = _benchmarks.get(bench_name, None)
-    if command is None:
+    bench = _benchmarks.get(bench_name, None)
+    if bench is None:
         print "Invalid benchmark name: {}".format(argv[1])
         return
 
-    print "Running command: {}".format(command)
-    perf_record(command)
+    if bench.preparation_cmd is not None:
+        print "Running preparation command: {}".format(bench.preparation_cmd)
+        subprocess.call(bench.preparation_cmd, shell=True)
+
+    perf_record(bench.benchmark_cmd)
     perf_script()
 
     if not os.path.isdir(TRACE_DIR):
         os.mkdir(TRACE_DIR)
 
-    parse_trace(bench_name, command, PERF_TRACE)
+    parse_trace(bench_name, bench.benchmark_cmd, PERF_TRACE)
 
 
 def parse_trace(bench_name, command, filename):
