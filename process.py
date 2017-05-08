@@ -18,6 +18,10 @@ class Process(object):
         self.state_itr = iter(self.state_list)
 
         self.vruntime = 0
+
+        self.total_runtime = 0
+        self.total_sleeptime = 0
+
         self.context_switches = 0
         self.finished = False
         self.last_duration = 0
@@ -97,14 +101,26 @@ class Process(object):
 
         # Debit time run.
         self.vruntime += time_run
+        self.total_runtime += time_run
 
         return time_run
+
+    def get_load(self):
+        """Measure the load a process puts on the CPU.
+
+        The metric we use is ratio of voluntary runtime to total time spent
+        running or sleeping (but not waiting).
+        """
+        return (float(self.total_runtime) /
+                (self.total_runtime + self.total_sleeptime))
 
     def sleep(self, time):
         if self.curr_state.state != SLEEPING:
             return
 
-        self.curr_state.duration -= max(time, self.curr_state.duration)
+        time_sleep = max(time, self.curr_state.duration)
+        self.curr_state.duration -= time_sleep
+        self.total_sleeptime += time_sleep
 
         if self.curr_state.duration == 0:
             self.go_to_next_state()

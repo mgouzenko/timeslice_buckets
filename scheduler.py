@@ -145,5 +145,12 @@ class Scheduler(object):
 
     def report_results(self):
         for p in self.processes:
-            print "{}: {} switches, average runtime: {}, finished: {}".format(
-                p.name, p.context_switches, p.average_runtime, p.finished)
+            print ("{}\n***********************\n"
+                   "\tcontext switches {}\n"
+                   "\taverage runtime: {}\n"
+                   "\tload: {}\n"
+                   "\tfinished: {}\n").format(p.name,
+                                              p.context_switches,
+                                              p.average_runtime,
+                                              p.get_load(),
+                                              p.finished)
