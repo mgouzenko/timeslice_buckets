@@ -11,11 +11,8 @@ class Process(object):
         self.target_latency = 0
         self.name = name
 
-        # Current CPU the process is running on
-        self.curr_cpu = None
-
         # CPU the process should migrate to
-        self.destination_cpu = None
+        self.target_cpu = None
         self.needs_migration = False
 
         # A parsing of the process's trace into a list of states.

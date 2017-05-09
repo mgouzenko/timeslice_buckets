@@ -11,7 +11,7 @@ class Scheduler(object):
 
         self.target_latency = target_latency
 
-        self.processes = procs
+        self.processes = [p for p in procs]
 
         # Procs waiting to take a turn on the CPU
         self.waiting_procs = [p for p in procs]
@@ -46,24 +46,32 @@ class Scheduler(object):
         self.sleeping_procs = [p for p in self.sleeping_procs
                                if p.is_sleeping()]
 
-        self.enqueue_procs(woken_procs)
+        for p in woken_procs:
+            target_scheduler = p.target_cpu.scheduler
+            migrating = (target_scheduler != self)
+            if migrating:
+                self.processes.remove(p)
+            p.target_cpu.scheduler.enqueue_proc(p, migrated=migrating)
 
-    def enqueue_procs(self, procs, migrated=False):
+    def enqueue_proc(self, p, migrated=False):
         # Adjust the timeslice of newly woken processes, just as CFS does in
         # place_entity(). That is, newly woken processes automatically receive
         # the lowest vruntime by a margin of the minimum latency. Sleeps for
         # less than a full latency cycle "don't count" - so processes can't game
         # the scheduler.
-        for p in procs:
-            p.vruntime = (max(p.vruntime, self.min_vruntime -
-                             self.target_latency) if not migrated
+        assert p.is_running()
+        p.vruntime = (max(p.vruntime, self.min_vruntime -
+                          self.target_latency) if not migrated
 
-                          # If the processes have migrated here, scheduler them
-                          # in the next latency cycle.
-                          else self.min_vruntime + self.target_latency)
+                      # If the processes have migrated here, scheduler them
+                      # in the next latency cycle.
+                      else self.min_vruntime + self.target_latency)
 
-        # Add the woken procs to the runqueue.
-        self.waiting_procs.extend(procs)
+        if migrated:
+            self.processes.append(p)
+
+        # Add the woken proc to the runqueue.
+        self.waiting_procs.append(p)
 
     def run(self, time):
         # How long we want to simulate for
@@ -98,8 +106,11 @@ class Scheduler(object):
                     sim_time += min_sleep_time
 
                     # This could have finished off the process. In that case,
-                    # there will still not be any waiting processes. Try again.
-                    if min_sleep_proc.finished:
+                    # there will still not be any waiting processes. It could
+                    # also be the case that the woken process has migrated. In
+                    # either of these cases, we just try again.
+                    if (min_sleep_proc.finished or
+                            min_sleep_proc.target_cpu.scheduler != self):
                         continue
 
                     elif not self.waiting_procs:

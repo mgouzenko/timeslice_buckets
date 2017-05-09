@@ -19,7 +19,7 @@ NANOS_PER_MILLISECOND = (10 ** 6)
 TARGET_LATENCY = 10 * NANOS_PER_MILLISECOND
 
 # Rebalance every 30 milliseconds. This is 5 latency cyles for linux.
-REBALANCE_INTERVAL = 30 * NANOS_PER_MILLISECOND
+REBALANCE_INTERVAL = 300 * NANOS_PER_MILLISECOND
 MAX_TIME = 5000 * NANOS_PER_MILLISECOND
 
 
@@ -68,16 +68,19 @@ def main(argv):
             for i in range(num_cpus)]
 
     time_run = 0
-    while any([c.has_running_procs() for c in cpus]):
+    while any([c.has_unfinished_procs() for c in cpus]):
         for c in cpus:
-            if c.has_running_procs():
+            if c.has_unfinished_procs():
                 c.run(REBALANCE_INTERVAL)
 
         time_run += REBALANCE_INTERVAL
-        if time_run % (50 * REBALANCE_INTERVAL):
+        if time_run % (10000 * REBALANCE_INTERVAL):
             print time_run
 
         migrator.rebalance()
+        # for c in cpus:
+        #     print "CPU {}".format(c.number)
+        #     print [p.name for p in c.get_unfinished_procs()]
 
     for c in cpus:
         c.report_results()
