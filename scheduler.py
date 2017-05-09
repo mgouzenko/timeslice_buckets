@@ -4,6 +4,9 @@ PLOT_DIR = "./plots"
 
 class Scheduler(object):
     def __init__(self, procs, target_latency, migrator):
+        for p in procs:
+            p.target_latency = target_latency
+
         self.migrator = migrator
 
         self.target_latency = target_latency
@@ -82,19 +85,26 @@ class Scheduler(object):
                     # Find the min time we need to wait for a process to wake up.
                     min_sleep_proc = min(self.sleeping_procs,
                                          key=lambda p: p.get_time_to_next_run())
+                    time_to_next_run = min_sleep_proc.curr_state.duration
 
                     # Cap it at the time remaining in the simulation.
-                    min_sleep_time = min(min_sleep_proc.curr_state.duration,
-                                         time_left)
+                    min_sleep_time = min(time_to_next_run, time_left)
                     assert min_sleep_time > 0
 
                     # Give the sleeping processes some time to sleep. After this
                     # there should be at least one runnable process.
                     self.update_sleeping_procs(min_sleep_time)
+
                     sim_time += min_sleep_time
 
-                    if not self.waiting_procs:
-                        raise Exception("There should be waiting procs by now.")
+                    # This could have finished off the process. In that case,
+                    # there will still not be any waiting processes. Try again.
+                    if min_sleep_proc.finished:
+                        continue
+
+                    elif not self.waiting_procs:
+                        assert min_sleep_time < time_to_next_run
+                        return
 
                 self.curr_proc = self.min_vruntime_process()
                 self.waiting_procs.remove(self.curr_proc)

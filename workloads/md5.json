@@ -1,0 +1,9 @@
+{
+    "processes": [
+        {
+            "benchmark": "md5",
+            "quantity": 4
+        }
+    ],
+    "cpus": 2
+}

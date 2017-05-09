@@ -27,8 +27,8 @@ def main(argv):
 
     if len(argv) != 2:
         print "Usage: ./trace_proc.py <BENCHMARK_NAME>"
-        for name, cmd in _benchmarks.iteritems():
-            print "{}:\t{}".format(name, cmd)
+        for name, b in _benchmarks.iteritems():
+            print "{}:\t{}".format(name, b.benchmark_cmd)
         return
 
     if not os.path.isdir("/tmp/{}".format(os.getuid())):

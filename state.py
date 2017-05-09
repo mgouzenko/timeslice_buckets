@@ -12,7 +12,7 @@ class State(object):
         self.duration = int(duration)
 
     @staticmethod
-    def make_state_list_from_trace(trace_name):
+    def make_state_list_from_trace(trace_name, max_time):
         """Parse .trace.csv file (a list of events) as a list of states."""
         states = []
 
@@ -24,10 +24,13 @@ class State(object):
             lineno = 1
             for line in trace_file.readlines():
                 event, state, ts = line.split(",")
-
+                if int(ts) > max_time:
+                    break
+                duration = int(ts) - curr_time
                 # If the current state is running, look for the next sleep
                 if curr_state == RUNNING:
                     if event == SCHED_WAKEUP:
+                        print ts
                         raise Exception("[line {}] not expecting "
                                         "a wakeup".format(str(lineno)))
 
@@ -37,7 +40,9 @@ class State(object):
                         continue
                     # D, S, D|S, x, etc
                     else:
-                        states.append(State(RUNNING, int(ts) - curr_time))
+                        if duration == 0:
+                            duration = 1
+                        states.append(State(RUNNING, duration))
                         curr_time = int(ts)
                         curr_state = SLEEPING
 
@@ -49,7 +54,9 @@ class State(object):
                         raise Exception("[line {}] expected wakeup as next "
                                         "event in trace: {}".format(str(lineno),
                                                                     trace_name))
-                    states.append(State(SLEEPING, int(ts) - curr_time))
+                    if duration == 0:
+                        duration = 1
+                    states.append(State(SLEEPING, duration))
                     curr_state = RUNNING
                     curr_time = int(ts)
 

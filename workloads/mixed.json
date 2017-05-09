@@ -1,0 +1,25 @@
+{
+    "processes": [
+        {
+            "benchmark": "aiostress",
+            "quantity": 4
+        },
+        {
+            "benchmark": "zip",
+            "quantity": 2
+        },
+        {
+            "benchmark": "md5",
+            "quantity": 4
+        },
+        {
+            "benchmark": "dd",
+            "quantity": 2
+        },
+        {
+            "benchmark": "unpack_linux",
+            "quantity": 1
+        }
+    ],
+    "cpus": 4
+}

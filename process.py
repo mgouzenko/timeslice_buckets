@@ -3,10 +3,12 @@ import matplotlib.pyplot as plt
 
 from state import State, RUNNING, SLEEPING
 
-ALPHA = 0.3
+N_LATENCIES = 10
+
 
 class Process(object):
-    def __init__(self, trace_file_name, name):
+    def __init__(self, trace_file_name, name, time):
+        self.target_latency = 0
         self.name = name
 
         # Current CPU the process is running on
@@ -17,7 +19,7 @@ class Process(object):
         self.needs_migration = False
 
         # A parsing of the process's trace into a list of states.
-        self.state_list = State.make_state_list_from_trace(trace_file_name)
+        self.state_list = State.make_state_list_from_trace(trace_file_name, time)
         self.state_itr = iter(self.state_list)
 
         self.vruntime = 0
@@ -31,9 +33,9 @@ class Process(object):
 
         # How long the process has been running since it last woke.
         self.curr_runtime = 0
-        self.old_average_runtime = 0
         self.average_runtime = 0
         self.average_runtime_points = []
+        self.runtime_points = []
 
         # The first state
         self.curr_state = self.state_itr.next()
@@ -52,6 +54,19 @@ class Process(object):
         else:
             return self.curr_state.duration
 
+    def calc_average_runtime(self):
+        # Return the average of the last N runtimes.
+        wall_clock_time = self.total_runtime + self.total_sleeptime
+
+        # Average the runtimes available to us in the last N_LATENCIES latency
+        # cycles.
+        last_n = [p[1] for p in self.runtime_points
+                  if wall_clock_time - p[0] <
+                  (N_LATENCIES * self.target_latency)]
+        last_n.append(self.curr_runtime)
+
+        return sum(last_n) / len(last_n)
+
     def go_to_next_state(self):
         try:
             self.curr_state = self.state_itr.next()
@@ -59,12 +74,14 @@ class Process(object):
 
             # If we go from running --> sleeping, update the average runtime.
             if self.curr_state.state == SLEEPING:
-                self.average_runtime = ((ALPHA * self.old_average_runtime) +
-                                        (1. - ALPHA) * self.curr_runtime)
-                self.average_runtime_points.append((
-                    self.total_runtime + self.total_sleeptime,
-                    self.average_runtime))
-                self.old_average_runtime = self.average_runtime
+                self.average_runtime = self.calc_average_runtime()
+
+                # What the wall clock time would be if this process were run in
+                # isolation.
+                wall_clock_time = self.total_runtime + self.total_sleeptime
+                self.runtime_points.append((wall_clock_time, self.curr_runtime))
+                self.average_runtime_points.append((wall_clock_time,
+                                                    self.average_runtime))
                 self.curr_runtime = 0
         except StopIteration:
             self.finished = True
@@ -75,10 +92,14 @@ class Process(object):
         Return the length of time the process ran. If the process wants to run
         for less than t, the return value is less than t.
         """
-        if self.curr_state.state != RUNNING:
-            return 0
+
+        assert self.curr_state.state == RUNNING
 
         time_run = min(self.curr_state.duration, t)
+        if time_run <= 0:
+            print "WRSFGSDAFDSA"
+            print time_run
+            print self.curr_state.duration
         assert time_run > 0
 
         self.curr_state.duration -= time_run
@@ -102,8 +123,7 @@ class Process(object):
         # off the cpu. If it has been on the CPU for longer than average, we
         # use the current runtime to estimate the "last runtime".
         if self.curr_runtime > self.average_runtime:
-            self.average_runtime = ((ALPHA * self.old_average_runtime) +
-                                    (1. - ALPHA) * self.curr_runtime)
+            self.average_runtime = self.calc_average_runtime()
 
         self.adjust_state()
 
@@ -153,5 +173,6 @@ class Process(object):
     def make_plots(self, root):
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(self.average_runtime_points)
+        ax.plot([p[0] for p in self.average_runtime_points],
+                [p[1] for p in self.average_runtime_points])
         fig.savefig('{}/{}.png'.format(root, self.name))

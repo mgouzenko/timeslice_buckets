@@ -1,9 +1,9 @@
 {
     "processes": [
         {
-            "benchmark": "untar_linux",
+            "benchmark": "unpack_linux",
             "quantity": 2
         }
     ],
-    "cpus": 4
+    "cpus": 2
 }

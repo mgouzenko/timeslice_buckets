@@ -1,0 +1,9 @@
+{
+    "processes": [
+        {
+            "benchmark": "wget",
+            "quantity": 4
+        }
+    ],
+    "cpus": 2
+}
