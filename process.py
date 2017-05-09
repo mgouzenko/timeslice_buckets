@@ -13,7 +13,6 @@ class Process(object):
 
         # CPU the process should migrate to
         self.target_cpu = None
-        self.needs_migration = False
 
         # A parsing of the process's trace into a list of states.
         self.state_list = State.make_state_list_from_trace(trace_file_name, time)

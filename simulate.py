@@ -78,9 +78,12 @@ def main(argv):
             print time_run
 
         migrator.rebalance()
-        # for c in cpus:
-        #     print "CPU {}".format(c.number)
-        #     print [p.name for p in c.get_unfinished_procs()]
+        for c in cpus:
+            print "CPU {}: {}".format(c.number, c.scheduler.target_latency)
+            for p in c.get_unfinished_procs():
+                print "\t{}: {}".format(p.name,
+                                        "r" if p == c.scheduler.curr_proc
+                                        else "s")
 
     for c in cpus:
         c.report_results()

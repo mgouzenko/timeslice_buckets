@@ -4,9 +4,6 @@ PLOT_DIR = "./plots"
 
 class Scheduler(object):
     def __init__(self, procs, target_latency, migrator):
-        for p in procs:
-            p.target_latency = target_latency
-
         self.migrator = migrator
 
         self.target_latency = target_latency
@@ -25,6 +22,26 @@ class Scheduler(object):
         self.residual_time = 0
 
         self.min_vruntime = 0
+
+    def migrate_procs(self):
+        migrating_procs = [p for p in (self.waiting_procs + self.sleeping_procs)
+                           if p.target_cpu.scheduler != self]
+
+        for p in migrating_procs:
+            self.migrate_proc(p)
+
+    def migrate_proc(self, p):
+        assert self.curr_proc != p
+
+        self.processes.remove(p)
+        target_scheduler = p.target_cpu.scheduler
+
+        if p.is_running():
+            self.waiting_procs.remove(p)
+            target_scheduler.enqueue_proc(p, True)
+        else:
+            self.sleeping_procs.remove(p)
+            target_scheduler.enqueue_migrated_sleeper(p)
 
     def get_timeslice(self):
         """Get the timeslice a process should run for."""
@@ -60,6 +77,7 @@ class Scheduler(object):
         # less than a full latency cycle "don't count" - so processes can't game
         # the scheduler.
         assert p.is_running()
+
         p.vruntime = (max(p.vruntime, self.min_vruntime -
                           self.target_latency) if not migrated
 
@@ -72,6 +90,11 @@ class Scheduler(object):
 
         # Add the woken proc to the runqueue.
         self.waiting_procs.append(p)
+
+    def enqueue_migrated_sleeper(self, sleeper):
+        self.sleeping_procs.append(sleeper)
+        self.processes.append(sleeper)
+        sleeper.vruntime = self.min_vruntime + self.target_latency
 
     def run(self, time):
         # How long we want to simulate for
@@ -153,11 +176,15 @@ class Scheduler(object):
                 if next_candidate is not None:
                     # Put next_candidate as the current process and put the
                     # current process back on the runqueue.
+                    kicked_proc = self.curr_proc
                     self.curr_proc.context_switches += 1
                     self.waiting_procs.append(self.curr_proc)
                     self.curr_proc = next_candidate
                     self.waiting_procs.remove(next_candidate)
                     self.min_vruntime = self.curr_proc.vruntime
+
+                    if kicked_proc.target_cpu.scheduler != self:
+                        self.migrate_proc(kicked_proc)
 
             # Case 3: curr_proc wants to sleep, so we put it on list of sleepers
             else:
