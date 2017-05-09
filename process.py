@@ -1,3 +1,6 @@
+import sys
+import matplotlib.pyplot as plt
+
 from state import State, RUNNING, SLEEPING
 
 ALPHA = 0.3
@@ -30,6 +33,7 @@ class Process(object):
         self.curr_runtime = 0
         self.old_average_runtime = 0
         self.average_runtime = 0
+        self.average_runtime_points = []
 
         # The first state
         self.curr_state = self.state_itr.next()
@@ -57,6 +61,9 @@ class Process(object):
             if self.curr_state.state == SLEEPING:
                 self.average_runtime = ((ALPHA * self.old_average_runtime) +
                                         (1. - ALPHA) * self.curr_runtime)
+                self.average_runtime_points.append((
+                    self.total_runtime + self.total_sleeptime,
+                    self.average_runtime))
                 self.old_average_runtime = self.average_runtime
                 self.curr_runtime = 0
         except StopIteration:
@@ -72,6 +79,8 @@ class Process(object):
             return 0
 
         time_run = min(self.curr_state.duration, t)
+        assert time_run > 0
+
         self.curr_state.duration -= time_run
         self.curr_runtime += time_run
 
@@ -96,8 +105,7 @@ class Process(object):
             self.average_runtime = ((ALPHA * self.old_average_runtime) +
                                     (1. - ALPHA) * self.curr_runtime)
 
-        if self.curr_state.duration == 0:
-            self.go_to_next_state()
+        self.adjust_state()
 
         # Debit time run.
         self.vruntime += time_run
@@ -114,16 +122,23 @@ class Process(object):
         return (float(self.total_runtime) /
                 (self.total_runtime + self.total_sleeptime))
 
+    def adjust_state(self):
+        if self.curr_state.duration == 0:
+            self.go_to_next_state()
+        elif self.curr_state.duration < 0:
+            raise Exception("Duration of curr_state should not be negative.")
+
     def sleep(self, time):
         if self.curr_state.state != SLEEPING:
             return
 
-        time_sleep = max(time, self.curr_state.duration)
+        time_sleep = min(time, self.curr_state.duration)
+        assert time_sleep > 0
+
         self.curr_state.duration -= time_sleep
         self.total_sleeptime += time_sleep
 
-        if self.curr_state.duration == 0:
-            self.go_to_next_state()
+        self.adjust_state()
 
     def print_state_list(self):
         duration = 0
@@ -134,3 +149,9 @@ class Process(object):
             duration += state.duration
 
         print "Duration: {} seconds".format(str(float(duration / 10 ** 9)))
+
+    def make_plots(self, root):
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(self.average_runtime_points)
+        fig.savefig('{}/{}.png'.format(root, self.name))

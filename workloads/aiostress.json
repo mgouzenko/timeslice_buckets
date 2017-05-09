@@ -2,7 +2,7 @@
     "processes": [
         {
             "benchmark": "aiostress",
-            "quantity": 2
+            "quantity": 24
         }
     ],
     "cpus": 4

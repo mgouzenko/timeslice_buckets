@@ -12,6 +12,6 @@ class CPU(object):
         self.scheduler = Scheduler(procs, self.target_latency, migrator)
         migrator.register_cpu(self)
 
-    def run(self):
-        self.scheduler.run(5000 * self.target_latency)
+    def run(self, time):
+        self.scheduler.run(time)
         self.scheduler.report_results()

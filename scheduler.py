@@ -1,3 +1,7 @@
+import os
+
+PLOT_DIR = "./plots"
+
 class Scheduler(object):
     def __init__(self, procs, target_latency, migrator):
         self.migrator = migrator
@@ -16,6 +20,8 @@ class Scheduler(object):
         self.curr_proc = None
 
         self.residual_time = 0
+
+        self.min_vruntime = 0
 
     def get_timeslice(self):
         """Get the timeslice a process should run for."""
@@ -39,26 +45,19 @@ class Scheduler(object):
 
         self.enqueue_procs(woken_procs)
 
-    def enqueue_procs(self, procs):
+    def enqueue_procs(self, procs, migrated=False):
         # Adjust the timeslice of newly woken processes, just as CFS does in
         # place_entity(). That is, newly woken processes automatically receive
         # the lowest vruntime by a margin of the minimum latency. Sleeps for
         # less than a full latency cycle "don't count" - so processes can't game
         # the scheduler.
-        if self.waiting_procs or self.curr_proc is not None:
-            if self.waiting_procs:
-                min_vruntime = (self.min_vruntime_process().vruntime -
-                                self.target_latency)
-            else:
-                min_vruntime = self.curr_proc.vruntime
+        for p in procs:
+            p.vruntime = (max(p.vruntime, self.min_vruntime -
+                             self.target_latency) if not migrated
 
-            for p in procs:
-                p.vruntime = max(p.vruntime, min_vruntime)
-
-        else:
-            # If all processes are sleeping, bring the vruntimes back to 0.
-            for p in procs:
-                p.vruntime = 0
+                          # If the processes have migrated here, scheduler them
+                          # in the next latency cycle.
+                          else self.min_vruntime + self.target_latency)
 
         # Add the woken procs to the runqueue.
         self.waiting_procs.extend(procs)
@@ -73,6 +72,8 @@ class Scheduler(object):
         # Keep going while any process needs to run.
         while any([not p.finished for p in self.processes]):
             time_left = target_sim_time - sim_time
+            if not time_left > 0:
+                break
 
             # If no procs want to run, fast forward time; we need to have a
             # runnable process before we continue with this loop.
@@ -80,11 +81,12 @@ class Scheduler(object):
                 if not self.waiting_procs:
                     # Find the min time we need to wait for a process to wake up.
                     min_sleep_proc = min(self.sleeping_procs,
-                                         key=lambda p: p.curr_state.duration)
+                                         key=lambda p: p.get_time_to_next_run())
 
                     # Cap it at the time remaining in the simulation.
                     min_sleep_time = min(min_sleep_proc.curr_state.duration,
                                          time_left)
+                    assert min_sleep_time > 0
 
                     # Give the sleeping processes some time to sleep. After this
                     # there should be at least one runnable process.
@@ -116,20 +118,27 @@ class Scheduler(object):
             # Mark down the waiting times of all sleeping procs
             self.update_sleeping_procs(runtime)
 
-            # Case 1: curr_proc wants more time, but we need to context switch.
-            if self.curr_proc.is_running():
+            # Case 1: curr_proc is finished
+            if self.curr_proc.finished:
+                self.curr_proc = self.min_vruntime_process()
+                if self.curr_proc is not None:
+                    self.waiting_procs.remove(self.curr_proc)
+                    self.min_vruntime = self.curr_proc.vruntime
+
+            # Case 2: curr_proc wants more time, but we need to context switch.
+            elif self.curr_proc.is_running():
                 # If processes are waiting, context switch this one off the CPU
                 next_candidate = self.min_vruntime_process()
-                if (next_candidate is not None and
-                        next_candidate.vruntime < self.curr_proc.vruntime):
+                if next_candidate is not None:
                     # Put next_candidate as the current process and put the
                     # current process back on the runqueue.
                     self.curr_proc.context_switches += 1
                     self.waiting_procs.append(self.curr_proc)
                     self.curr_proc = next_candidate
                     self.waiting_procs.remove(next_candidate)
+                    self.min_vruntime = self.curr_proc.vruntime
 
-            # 2) curr_proc wants to sleep, so we put it on list of sleepers
+            # Case 3: curr_proc wants to sleep, so we put it on list of sleepers
             else:
                 self.sleeping_procs.append(self.curr_proc)
                 self.curr_proc = self.min_vruntime_process()
@@ -137,6 +146,7 @@ class Scheduler(object):
                 # If a process wants to run, remove it from waiting list.
                 if self.curr_proc is not None:
                     self.waiting_procs.remove(self.curr_proc)
+                    self.min_vruntime = self.curr_proc.vruntime
 
 
     def min_vruntime_process(self):
@@ -144,6 +154,9 @@ class Scheduler(object):
                 if self.waiting_procs else None)
 
     def report_results(self):
+        if not os.path.exists(PLOT_DIR):
+            os.mkdir(PLOT_DIR)
+
         for p in self.processes:
             print ("{}\n***********************\n"
                    "\tcontext switches {}\n"
@@ -154,3 +167,4 @@ class Scheduler(object):
                                               p.average_runtime,
                                               p.get_load(),
                                               p.finished)
+            p.make_plots(PLOT_DIR)

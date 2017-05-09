@@ -14,7 +14,9 @@ TRACE_FILE_FMT = "./traces/{}.trace.csv"
 RUNNING = 0
 SLEEPING = 1
 SCHED_WAKEUP = "sched_wakeup"
-TARGET_LATENCY = 11 * (10 ** 9)
+
+NANOS_PER_MILLISECOND = (10 ** 6)
+TARGET_LATENCY = 10 * NANOS_PER_MILLISECOND
 
 
 def get_workload(workload):
@@ -48,8 +50,9 @@ def main(argv):
     json_load = get_workload(workload)
     for proc in json_load['processes']:
         for i in range(proc['quantity']):
-            trace = TRACE_FILE_FMT.format(proc['benchmark'])
-            procs.append(Process(trace, "{}_{}".format(trace, i)))
+            trace_name = proc['benchmark']
+            trace = TRACE_FILE_FMT.format(trace_name)
+            procs.append(Process(trace, "{}_{}".format(trace_name, i)))
 
     procs[0].print_state_list()
     num_cpus = json_load['cpus']
@@ -58,7 +61,7 @@ def main(argv):
     cpus = [CPU(procs[i::num_cpus], TARGET_LATENCY, i, migrator)
             for i in range(num_cpus)]
     for c in cpus:
-        c.run()
+        c.run(50000000 * TARGET_LATENCY)
 
 
 if __name__ == '__main__':
