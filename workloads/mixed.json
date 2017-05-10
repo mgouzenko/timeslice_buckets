@@ -23,8 +23,8 @@
     ],
     "cpus": 4,
     "sim_time_millis": 6000,
-    "max_latency_millis": 80,
+    "max_latency_millis": 30,
     "rebalance_period_millis": 100,
-    "initial_latency_millis": 61.3,
-    "time_packer_active": false
+    "initial_latency_millis": 10,
+    "time_packer_active": true
 }

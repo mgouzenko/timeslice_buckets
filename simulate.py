@@ -77,11 +77,6 @@ def main(argv):
 
     num_cpus = json_load['cpus']
 
-    # The migrator is in charge of periodically rebalancing buckets - this is
-    # the meat of the time-packing algorithm. We initialize it with the maximum
-    # allowable target latency, L_max, as described in our paper.
-    migrator = Migrator(json_load['max_latency_millis'])
-
     cpus = [
         CPU(
             # The processes the CPU is in charge of
@@ -98,9 +93,10 @@ def main(argv):
         for i in range(num_cpus)
     ]
 
-    # Register the cpus with the migrator.
-    for c in cpus:
-        migrator.register_cpu(c)
+    # The migrator is in charge of periodically rebalancing buckets - this is
+    # the meat of the time-packing algorithm. We initialize it with the maximum
+    # allowable target latency, L_max, as described in our paper.
+    migrator = Migrator(json_load['max_latency_millis'], cpus)
 
     # We periodically recalibrate buckets and migrate processes. How often this
     # happens is controlled by the rebalance_period.
