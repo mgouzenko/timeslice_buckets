@@ -1,9 +1,0 @@
-{
-    "processes": [
-        {
-            "benchmark": "convert",
-            "quantity": 4
-        }
-    ],
-    "cpus": 2
-}
