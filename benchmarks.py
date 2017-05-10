@@ -21,7 +21,7 @@ BENCHMARKS = {
                               " > /tmp/{uid}/linux"),
 
     "test": Benchmark("/tmp/{uid}/a.out",
-                      preparation_cmd="gcc ./test.c -o /tmp/{uid}/a.out"),
+                      preparation_cmd="gcc ./test_materials/test.c -o /tmp/{uid}/a.out"),
 
     "wget": Benchmark("wget https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.11.tar.xz > /tmp/{uid}/kernel"),
 
