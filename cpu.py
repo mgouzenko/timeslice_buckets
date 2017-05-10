@@ -19,6 +19,3 @@ class CPU(object):
 
     def run(self, time):
         self.scheduler.run(time)
-
-    def report_results(self):
-        self.scheduler.report_results()

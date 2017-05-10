@@ -32,15 +32,19 @@ class Bucket(object):
             p.target_cpu = min_load_cpu
             self.desired_latencies[min_load_cpu] += p.average_runtime
 
-    def set_new_latencies(self):
+    def set_new_latencies(self, max_latency):
         for c in self.cpus:
-            c.scheduler.target_latency = min(self.desired_latencies[c],
-                                             MAX_TARGET_LATENCY)
+            lat = min(self.desired_latencies[c],
+                              max_latency)
+            c.scheduler.target_latency = lat
+
 
 class Migrator(object):
-    def __init__(self):
+    def __init__(self, max_latency_millis):
         self.cpus = []
         self.buckets = []
+        self.max_latency = max_latency_millis * (10 ** 6)
+        self.historical_latencies = []
 
     def register_cpu(self, cpu):
         self.cpus.append(cpu)
@@ -143,7 +147,12 @@ class Migrator(object):
             c.scheduler.migrate_procs()
 
         for b in self.buckets:
-            b.set_new_latencies()
+            b.set_new_latencies(self.max_latency)
+
+        avg_latency = (sum([c.scheduler.target_latency for c in self.cpus]) /
+                       len(self.cpus))
+
+        self.historical_latencies.append(avg_latency)
 
 
     def print_buckets(self):

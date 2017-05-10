@@ -3,13 +3,13 @@ import matplotlib.pyplot as plt
 
 from state import State, RUNNING, SLEEPING
 
-N_LATENCIES = 10
-
+N = 10
 
 class Process(object):
-    def __init__(self, trace_file_name, name, time):
+    def __init__(self, trace_file_name, bname, n, time):
         self.target_latency = 0
-        self.name = name
+        self.bench_name = bname
+        self.name = "{}_{}".format(bname, n)
 
         # CPU the process should migrate to
         self.target_cpu = None
@@ -51,16 +51,9 @@ class Process(object):
             return self.curr_state.duration
 
     def calc_average_runtime(self):
-        # Return the average of the last N runtimes.
-        wall_clock_time = self.total_runtime + self.total_sleeptime
-
-        # Average the runtimes available to us in the last N_LATENCIES latency
-        # cycles.
-        last_n = [p[1] for p in self.runtime_points
-                  if wall_clock_time - p[0] <
-                  (N_LATENCIES * self.target_latency)]
+        # Average the runtimes available to us in the last N wake-sleep cycles
+        last_n = [p[1] for p in self.runtime_points[-N:]]
         last_n.append(self.curr_runtime)
-
         return sum(last_n) / len(last_n)
 
     def go_to_next_state(self):
@@ -165,10 +158,3 @@ class Process(object):
             duration += state.duration
 
         print "Duration: {} seconds".format(str(float(duration / 10 ** 9)))
-
-    def make_plots(self, root):
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.plot([p[0] for p in self.average_runtime_points],
-                [p[1] for p in self.average_runtime_points])
-        fig.savefig('{}/{}.png'.format(root, self.name))

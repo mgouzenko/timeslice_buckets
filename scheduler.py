@@ -1,6 +1,7 @@
 import os
 
 PLOT_DIR = "./plots"
+RAW_RESULTS = "./plots/raw_results"
 
 class Scheduler(object):
     def __init__(self, procs, target_latency, migrator):
@@ -200,19 +201,3 @@ class Scheduler(object):
     def min_vruntime_process(self):
         return (min(self.waiting_procs, key=lambda p: p.vruntime)
                 if self.waiting_procs else None)
-
-    def report_results(self):
-        if not os.path.exists(PLOT_DIR):
-            os.mkdir(PLOT_DIR)
-
-        for p in self.processes:
-            print ("{}\n***********************\n"
-                   "\tcontext switches {}\n"
-                   "\taverage runtime: {}\n"
-                   "\tload: {}\n"
-                   "\tfinished: {}\n").format(p.name,
-                                              p.context_switches,
-                                              p.average_runtime,
-                                              p.get_load(),
-                                              p.finished)
-            p.make_plots(PLOT_DIR)
