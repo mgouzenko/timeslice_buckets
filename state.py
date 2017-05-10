@@ -1,7 +1,7 @@
+"""Helper to generate state list from perf traces."""
 RUNNING = 0
 SLEEPING = 1
 SCHED_WAKEUP = "sched_wakeup"
-TARGET_LATENCY = 11 * (10 ** 9)
 
 
 class State(object):
