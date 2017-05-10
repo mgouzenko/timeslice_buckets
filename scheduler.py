@@ -5,8 +5,11 @@ RAW_RESULTS = "./plots/raw_results"
 
 class Scheduler(object):
     def __init__(self, procs, target_latency):
+        # The CFS target latency
         self.target_latency = target_latency
 
+        # All processes that this scheduler manages, including finished
+        # processes.
         self.processes = [p for p in procs]
 
         # Procs waiting to take a turn on the CPU
@@ -20,9 +23,11 @@ class Scheduler(object):
 
         self.residual_time = 0
 
+        # Smallest vruntime of a process on this scheduler.
         self.min_vruntime = 0
 
     def migrate_procs(self):
+        # Gather all of processes that need migration.
         migrating_procs = [p for p in (self.waiting_procs + self.sleeping_procs)
                            if p.target_cpu.scheduler != self]
 
@@ -30,6 +35,8 @@ class Scheduler(object):
             self.migrate_proc(p)
 
     def migrate_proc(self, p):
+        # We can't migrate the current process, because it's running. It will
+        # migrate when it goes to sleep if it needs to.
         assert self.curr_proc != p
 
         self.processes.remove(p)
@@ -52,19 +59,22 @@ class Scheduler(object):
         return self.target_latency / (len(self.waiting_procs) + 1)
 
     def update_sleeping_procs(self, sleep_time):
+        """Mark that the sleeping processes have slept for sleep_time."""
         for p in self.sleeping_procs:
             p.sleep(sleep_time)
 
         # Procs that were sleeping but are now running.
         woken_procs = [p for p in self.sleeping_procs if p.is_running()]
 
-        # Gets rid of the procs that are 1) running or 2) finished
+        # Get rid of the procs that are 1) running or 2) finished
         self.sleeping_procs = [p for p in self.sleeping_procs
                                if p.is_sleeping()]
 
         for p in woken_procs:
             target_scheduler = p.target_cpu.scheduler
             migrating = (target_scheduler != self)
+
+            # Migrate the woken procs if necessary
             if migrating:
                 self.processes.remove(p)
             p.target_cpu.scheduler.enqueue_proc(p, migrated=migrating)
@@ -72,16 +82,16 @@ class Scheduler(object):
     def enqueue_proc(self, p, migrated=False):
         # Adjust the timeslice of newly woken processes, just as CFS does in
         # place_entity(). That is, newly woken processes automatically receive
-        # the lowest vruntime by a margin of the minimum latency. Sleeps for
+        # the lowest vruntime by a margin of the target latency. Sleeps for
         # less than a full latency cycle "don't count" - so processes can't game
-        # the scheduler.
+        # the scheduler by being placed backwards in time.
         assert p.is_running()
 
         p.vruntime = (max(p.vruntime, self.min_vruntime -
                           self.target_latency) if not migrated
 
-                      # If the processes have migrated here, scheduler them
-                      # in the next latency cycle.
+                      # If the processes have migrated here, schedule them
+                      # in the next latency cycle, as per CFS's rules.
                       else self.min_vruntime + self.target_latency)
 
         if migrated:
@@ -99,7 +109,7 @@ class Scheduler(object):
         # How long we want to simulate for
         target_sim_time = time + self.residual_time
 
-        # How long we've simulated for
+        # How long we've simulated for in the current call to run()
         sim_time = 0
 
         # Keep going while any process needs to run.
@@ -122,27 +132,30 @@ class Scheduler(object):
                     assert min_sleep_time > 0
 
                     # Give the sleeping processes some time to sleep. After this
-                    # there should be at least one runnable process.
+                    # there is hopefully at least one runnable process.
                     self.update_sleeping_procs(min_sleep_time)
 
                     sim_time += min_sleep_time
 
-                    # This could have finished off the process. In that case,
-                    # there will still not be any waiting processes. It could
-                    # also be the case that the woken process has migrated. In
-                    # either of these cases, we just try again.
+                    # The sleep could have finished off the process. In that
+                    # case, there will still not be any waiting processes. It
+                    # could also be the case that the woken process has
+                    # migrated. In either of these cases, we just try again.
                     if (min_sleep_proc.finished or
                             min_sleep_proc.target_cpu.scheduler != self):
                         continue
 
+                    # The only way there's still no waiting processes is if the
+                    # sleep time was capped by time_left.
                     elif not self.waiting_procs:
                         assert min_sleep_time < time_to_next_run
                         return
 
+                # By now, there absolutely MUST be a waiting process.
                 self.curr_proc = self.min_vruntime_process()
                 self.waiting_procs.remove(self.curr_proc)
 
-                # Try the loop again, now that there's a runnable process.
+                # Try the loop again, now that self.curr_proc is not None.
                 continue
 
             # Figure out how long we should run the current process for.
@@ -187,14 +200,19 @@ class Scheduler(object):
 
             # Case 3: curr_proc wants to sleep, so we put it on list of sleepers
             else:
-                self.sleeping_procs.append(self.curr_proc)
+                target_scheduler = self.curr_proc.target_cpu.scheduler
+                if target_scheduler != self:
+                    target_scheduler.enqueue_migrated_sleeper(self.curr_proc)
+                    self.processes.remove(self.curr_proc)
+                else:
+                    self.sleeping_procs.append(self.curr_proc)
+
                 self.curr_proc = self.min_vruntime_process()
 
                 # If a process wants to run, remove it from waiting list.
                 if self.curr_proc is not None:
                     self.waiting_procs.remove(self.curr_proc)
                     self.min_vruntime = self.curr_proc.vruntime
-
 
     def min_vruntime_process(self):
         return (min(self.waiting_procs, key=lambda p: p.vruntime)
