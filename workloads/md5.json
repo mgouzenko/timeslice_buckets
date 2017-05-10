@@ -5,5 +5,10 @@
             "quantity": 4
         }
     ],
-    "cpus": 2
+    "cpus": 2,
+    "sim_time_millis": 6000,
+    "max_latency_millis": 30,
+    "rebalance_period_millis": 100,
+    "initial_latency_millis": 10,
+    "time_packer_active": true
 }
