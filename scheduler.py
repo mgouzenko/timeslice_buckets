@@ -4,9 +4,7 @@ PLOT_DIR = "./plots"
 RAW_RESULTS = "./plots/raw_results"
 
 class Scheduler(object):
-    def __init__(self, procs, target_latency, migrator):
-        self.migrator = migrator
-
+    def __init__(self, procs, target_latency):
         self.target_latency = target_latency
 
         self.processes = [p for p in procs]

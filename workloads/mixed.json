@@ -26,5 +26,5 @@
     "max_latency_millis": 80,
     "rebalance_period_millis": 100,
     "initial_latency_millis": 61.3,
-    "dynamic": false
+    "time_packer_active": false
 }

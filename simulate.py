@@ -22,11 +22,13 @@ PLOT_DIR = "./plots"
 
 
 def get_workload(workload):
+    """Load a JSON configuration of the workload."""
     with open(WORKLOAD_FILE_FMT.format(workload), "r") as workload:
         return json.loads(workload.read())
 
 
 def get_workloads():
+    """Return a listing of all workloads."""
     return [f.split(".")[0] for f in os.listdir(WORKLOAD_DIR)]
 
 
@@ -48,58 +50,81 @@ def main(argv):
         print "Unrecognized workload: {}".format(workload)
         return
 
-    procs = []
     json_load = get_workload(workload)
 
+    # How much passing time we want to simulate. For example, if this is 5000,
+    # we want to simulate 5 seconds worth of the trace.
     sim_time = json_load['sim_time_millis'] * NANOS_PER_MILLISECOND
-    runtime_plot = []
+
+    # List of process objects representing each workload; these will be split
+    # between CPUs.
+    procs = []
+
+    # A subset of the procs list (defined above). This subset is used to plot
+    # moving average runtime VS time.
+    sample_procs = []
+
     for proc in json_load['processes']:
         for i in range(proc['quantity']):
             trace_name = proc['benchmark']
-            trace = TRACE_FILE_FMT.format(trace_name)
-            new_proc = Process(trace,
+            trace_file = TRACE_FILE_FMT.format(trace_name)
+            new_proc = Process(trace_file,
                                trace_name,
                                i, sim_time)
             procs.append(new_proc)
             if i == 0:
-                runtime_plot.append(new_proc)
-
-    procs[0].print_state_list()
+                sample_procs.append(new_proc)
 
     num_cpus = json_load['cpus']
-    migrator = Migrator(json_load['max_latency_millis'])
-    cpus = [CPU(procs[i::num_cpus],
-                json_load['initial_latency_millis'] * NANOS_PER_MILLISECOND,
-                i, migrator)
-            for i in range(num_cpus)]
 
-    time_run = 0
-    rebalance_period = (json_load['rebalance_period_millis'] *
-                        NANOS_PER_MILLISECOND)
+    # The migrator is in charge of periodically rebalancing buckets - this is
+    # the meat of the time-packing algorithm. We initialize it with the maximum
+    # allowable target latency, L_max, as described in our paper.
+    migrator = Migrator(json_load['max_latency_millis'])
+
+    cpus = [
+        CPU(
+            # The processes the CPU is in charge of
+            procs[i::num_cpus],
+
+            # The initial CFS target latency, before the time packing algorithm
+            # kicks in.
+            json_load['initial_latency_millis'] * NANOS_PER_MILLISECOND,
+
+            # The CPU number
+            i
+        )
+
+        for i in range(num_cpus)
+    ]
+
+    # Register the cpus with the migrator.
+    for c in cpus:
+        migrator.register_cpu(c)
+
+    # We periodically recalibrate buckets and migrate processes. How often this
+    # happens is controlled by the rebalance_period.
+    rebalance_period = (
+        json_load['rebalance_period_millis'] * NANOS_PER_MILLISECOND)
+
+    # Continue to simulate while CPUs have unfinished processes.
     while any([c.has_unfinished_procs() for c in cpus]):
         for c in cpus:
             if c.has_unfinished_procs():
                 c.run(rebalance_period)
 
-        time_run += rebalance_period
-        if time_run % (10 * rebalance_period) == 0:
-            print time_run
-
-        if json_load['dynamic']:
+        if json_load['time_packer_active']:
             migrator.rebalance()
 
-        # for c in cpus:
-        #     print "CPU {}: {}".format(c.number, c.scheduler.target_latency)
-        #     for p in c.get_unfinished_procs():
-        #         print "\t{}: {}".format(p.name,
-        #                                 "r" if p == c.scheduler.curr_proc
-        #                                 else "s")
+    make_runtime_plots(sample_procs)
+    report_raw_results(procs, json_load['time_packer_active'], migrator)
 
-    # make_runtime_plots(runtime_plot)
-    report_raw_results(procs, json_load['dynamic'], migrator)
 
-def report_raw_results(procs, dynamic, migrator):
+def report_raw_results(procs, time_packer_active, migrator):
+    """Print statistics about each process."""
+
     class Stats:
+        """Helper class to average context switches for each benchmark."""
         def __init__(self, bench_name):
             self.bench_name = bench_name
             self.context_switches = 0
@@ -134,12 +159,13 @@ def report_raw_results(procs, dynamic, migrator):
         s.normalize()
         print "{}: {}".format(s.bench_name, s.context_switches)
 
-    if dynamic:
+    if time_packer_active:
         lats = migrator.historical_latencies
         print "Avg latency: {}".format(sum(lats) / len(lats))
 
 
 def make_runtime_plots(procs):
+    """Plot estimated runtimes (moving avg) vs time for each process."""
     for p in procs:
         plt.title("Estimated Runtime: {}".format(p.name))
         plt.xlabel("Time (nanos)")
